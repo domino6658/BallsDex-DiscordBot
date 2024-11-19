@@ -44,6 +44,9 @@ class TradeView(View):
             return False
         else:
             return True
+        
+    async def on_timeout(self) -> None:
+        await self.trade.timeout()
 
     @button(label="Lock proposal", emoji="\N{LOCK}", style=discord.ButtonStyle.primary)
     async def lock(self, interaction: discord.Interaction, button: Button):
@@ -97,10 +100,7 @@ class ConfirmView(View):
         self.trade = trade
     
     async def on_timeout(self) -> None:
-        self.trade.trader1.cancelled = True
-        self.trade.trader2.cancelled = True
-        self.trade.embed.colour = discord.Colour.red()
-        await self.trade.timeout("The trade has timed out.")
+        await self.trade.timeout()
 
 
 
@@ -205,10 +205,6 @@ class TradeMenu:
 
         while True:
             await asyncio.sleep(15)
-            if datetime.utcnow() - start_time > timedelta(minutes=15):
-                self.embed.colour = discord.Colour.dark_red()
-                await self.cancel("The trade timed out")
-                return
 
             try:
                 fill_trade_embed_fields(self.embed, self.bot, self.trader1, self.trader2)
@@ -219,8 +215,7 @@ class TradeMenu:
                     f"guild={self.message.guild.id} "  # type: ignore
                     f"trader1={self.trader1.user.id} trader2={self.trader2.user.id}"
                 )
-                self.embed.colour = discord.Colour.dark_red()
-                await self.cancel("The trade timed out")
+                await self.timeout()
                 return
 
     async def start(self):
@@ -256,12 +251,16 @@ class TradeMenu:
         self.embed.description = f"**{reason}**"
         await self.message.edit(content=None, embed=self.embed, view=self.current_view)
     
-    async def timeout(self, reason: str = "The trade has been cancelled."):
+    async def timeout(self, reason: str = "The trade has timed out."):
         """
         Cancel the trade after the timeout period.
         """
         if self.task:
             self.task.cancel()
+        
+        self.trader1.cancelled = True
+        self.trader2.cancelled = True
+        self.embed.colour = discord.Colour.red()
 
         for countryball in self.trader1.proposal + self.trader2.proposal:
             await countryball.unlock()
