@@ -93,8 +93,16 @@ class TradeView(View):
 
 class ConfirmView(View):
     def __init__(self, trade: TradeMenu):
-        super().__init__(timeout=90)
+        super().__init__(timeout=60 * 5)
         self.trade = trade
+    
+    async def on_timeout(self) -> None:
+        self.trade.trader1.cancelled = True
+        self.trade.trader2.cancelled = True
+        self.trade.embed.colour = discord.Colour.red()
+        await self.trade.timeout("The trade has timed out.")
+
+
 
     async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
         try:
@@ -233,6 +241,24 @@ class TradeMenu:
     async def cancel(self, reason: str = "The trade has been cancelled."):
         """
         Cancel the trade immediately.
+        """
+        if self.task:
+            self.task.cancel()
+
+        for countryball in self.trader1.proposal + self.trader2.proposal:
+            await countryball.unlock()
+
+        self.current_view.stop()
+        for item in self.current_view.children:
+            item.disabled = True  # type: ignore
+
+        fill_trade_embed_fields(self.embed, self.bot, self.trader1, self.trader2)
+        self.embed.description = f"**{reason}**"
+        await self.message.edit(content=None, embed=self.embed, view=self.current_view)
+    
+    async def timeout(self, reason: str = "The trade has been cancelled."):
+        """
+        Cancel the trade after the timeout period.
         """
         if self.task:
             self.task.cancel()
